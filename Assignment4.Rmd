@@ -1,0 +1,149 @@
+---
+title: "Assignment 4"
+author: "Adnan Hajizada"
+date: "April 5, 2016"
+output: html_document
+---
+
+
+##Trainings - testing 
+```{r}
+library(plyr)
+setwd("C:/Users/FuserLimon/Documents/Semester 2/Data Mining/Assignment4")
+load("dataset.RData")
+str(dataset)
+names(dataset)
+
+#change name to y1 to avoid confusion with some other y variable 
+names(dataset)[names(dataset)=="y"] <- "y1"
+#create an interaction variable between Debt.To.Income.Ratio and Amount Requested
+dataset$dtirXar <- dataset$Amount.Requested*dataset$Debt.To.Income.Ratio
+
+include <- sample(nrow(dataset), size = 5000, replace = FALSE)
+training <- dataset[include, ]
+testing <- dataset[-include, ]
+
+```
+
+##1 Plot
+
+```{r}
+#Plot
+with(training, plot(x = Amount.Requested, y = Debt.To.Income.Ratio, pch = y1, col=1+y1))
+legend("topright", legend = c("no","yes"), pch = 0:1, title = "Was loan approved?",
+       bg = "lightgray", box.lwd = 0, ncol=2)
+```
+
+We can see from the plot that only people whose Debt to Income ration was very close to zero had a chance of getting a loan
+
+##2 Initial Model
+
+```{r}
+logit <- glm(y1 ~ Debt.To.Income.Ratio + Amount.Requested + dtirXar, data = training, family = binomial(link = "logit"))
+y_hat_logit <- fitted(logit) # these are probabilitiesummary(y_hat_logit)
+summary(y_hat_logit)
+z_logit <- as.integer(y_hat_logit > 0.5) # these are classifications
+table(training$y1, z_logit)
+
+yhat_y1 <- predict(logit, newdata = testing,  type = "response")
+z_logit <- as.integer(yhat_y1 > 0.5)
+table(testing$y1, z_logit)
+mean(z_logit == testing$y1)
+
+```
+
+
+##3 Expanded Model
+
+```{r}
+#let us add Employement.length to the euqation
+logit <- glm(y1 ~ Debt.To.Income.Ratio + Amount.Requested + dtirXar + 
+              Employment.Length, data = training, family = binomial(link = "logit"))
+summary(logit)
+y_hat_logit <- fitted(logit) # these are probabilitiesummary(y_hat_logit)
+summary(y_hat_logit)
+z_logit <- as.integer(y_hat_logit > 0.5) # these are classifications
+table(training$y1, z_logit)
+yhat_y1 <- predict(logit, newdata = testing,  type = "response")
+z_logit <- as.integer(yhat_y1 > 0.5)
+table(testing$y1, z_logit)
+mean(z_logit == testing$y1)
+
+```
+The expanded model looks to perform better
+
+##4 Using Optim
+
+```{r}
+X <- model.matrix(logit)
+y <- dataset$y1
+
+# this is the log-likelihood function we will maximize
+ll <- function(beta) {
+  eta <- X %*% beta
+  p <- 1 / (1 + exp(-eta))
+  return( sum(dbinom(y, size = 1, prob = p, log = TRUE)) )
+}
+
+# a way to solve "simple" optimization problemss Using Nelder-Mead method because other ones didn??t work
+opt <- optim(rep(0, ncol(X)), fn = ll, method = "Nelder-Mead",
+             # this next line is critical: 
+             # it tells R to maximize rather than minimize
+             control = list(fnscale = -1))
+cbind(coef(logit), opt$par) # very similar
+```
+We can clearly see that the results are very similar to the summary in logit
+ 
+##5  LDA and QDA
+
+```{r}
+#LDA Model
+require(MASS)
+LDA <- lda(y1 ~ Debt.To.Income.Ratio + Amount.Requested + dtirXar + 
+              Employment.Length, data = training)
+y_hat_LDA <- predict(LDA)
+summary(y_hat_LDA$posterior) # these are probabilities
+z_LDA <- y_hat_LDA$class     # there as classifications
+table(training$y1, z_LDA)
+
+yhat_y1 <- predict(LDA, newdata = testing,  type = "response")
+summary(yhat_y1)
+z_LDA <- yhat_y1$class
+table(testing$y1, z_LDA)
+mean(z_LDA == testing$y1)
+
+#QDA Model
+
+QDA <- qda(y1 ~ Debt.To.Income.Ratio + Amount.Requested + dtirXar + 
+              Employment.Length, data = training)
+y_hat_QDA <- predict(QDA)
+summary(y_hat_QDA$posterior) # these are probabilities
+z_QDA <- y_hat_QDA$class     # there as classifications
+table(training$y1, z_QDA)
+
+yhat_y1 <- predict(QDA, newdata = testing,  type = "response")
+summary(yhat_y1)
+z_QDA <- yhat_y1$class
+table(testing$y1, z_QDA)
+mean(z_QDA == testing$y1)
+
+```
+The results explained by the LDA model seem similar to the Logit model and a little less than that Expanded Logit model. The QDA model, shows much smaller results.
+
+##6 LASSO Penalization
+
+```{r}
+X <- model.matrix(logit)
+y <- training$y1
+
+stopifnot(require(glmnet))
+path2 <- glmnet(X[,-1], y, family = "binomial")
+path2
+y_hat_path2 <- predict(path2, newx = X[,-1], type = "response")
+z_path2 <- y_hat_path2 > 0.5
+s <- which.max(colSums(apply(z_path2, MARGIN = 2, FUN = `==`, e2 = y)))
+table(testing$y1, as.integer(z_path2[,s]))
+mean(testing$y1 == as.integer(z_path2[,s]))
+
+```
+This result is close to Optim and Logit models.

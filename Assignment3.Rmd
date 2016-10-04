@@ -1,0 +1,112 @@
+---
+title: "Data Mining Assignment3"
+author: "Adnan Hajizada"
+date: "March 22, 2016"
+output: html_document
+---
+Load librarires 
+```{r}
+library(pls)
+library(lars)
+library(MASS)
+library(robustbase)
+library(quantreg)
+```
+
+
+1. Visualization
+
+```{r}
+suppressPackageStartupMessages(library(openintro))
+data(countyComplete)
+
+countyComplete$growth <- with(countyComplete, (pop2010 - pop2000) / pop2000 * 100)
+include <- sample(nrow(countyComplete), size = 2000, replace = FALSE)
+training <- countyComplete[include, ]
+testing <- countyComplete[-include, ]
+
+```
+
+Let's run an OLS regression to see which variables are worth looking at
+
+```{r}
+ols <- lm(growth ~ age_under_5 + age_under_18 + age_over_65 + female + white +
+            black + native + asian + pac_isl + two_plus_races + hispanic + 
+            white_not_hispanic + no_move_in_one_plus_year + foreign_born + 
+            foreign_spoken_at_home + hs_grad + bachelors + veterans + 
+            mean_work_travel + housing_units + home_ownership + housing_multi_unit + 
+            households + persons_per_household + per_capita_income + 
+            median_household_income + poverty + firms + women_owned_firms + sales + 
+            sales_per_capita + fed_spending + density, data = training)
+summary(ols)
+```
+
+I am going to choose the bachelor as an importnat factor that can predict the population growth. The amount of people with bachelor degrees in a given county can give us information about the general economic growth that is going on there, more skilled jobs are opening up, more people are moving in and hence larger population growth. 
+This is the initial scatter plot with just bachelors and growth
+
+```{r}
+par(mar = c(5,4,1,1) + .1, pch = 20, las = 1)
+with(training, plot(x = bachelors, y = growth))
+```
+
+Now We will add sales per capita in the form of four colors that represent the quantiles. (from lo to hi)
+Hypothesis: Higher amount of sales per capita signals bigger economic growth and can predict bigger population growth
+Also, I am adding 4 symbols for the plots that will show us the amount of families that has not moved within one year. Hypothesis: Greater movement is correlated with bigger growth.
+
+```{r}
+summary(training$sales_per_capita)
+spc_cut_3 <- cut(training$sales_per_capita, c(0,6843,10290,13120,76510), labels = c(1:4) )
+
+summary(training$no_move_in_one_plus_year)
+training$nmiopy_cut_4 <- cut(training$no_move_in_one_plus_year, c(51,83,85,88,100), labels = c(1:4) )
+par(mar = c(5,4,1,1) + .1, pch = 20, las = 1)
+with(training, plot(x = bachelors, y = growth, col = spc_cut_3, pch = as.numeric(nmiopy_cut_4)))
+legend("topleft", legend = 1:4, text.col = 1:4, title = "Sales Per Capita Quantiles", 
+       bg = "lightgray", box.lwd = 0, ncol = 2)
+legend("bottomright", legend = 1:4, pch = 1:4, title = "Immobility in Quantiles",
+       bg = "lightgray", box.lwd = 0, ncol=2)
+abline(lm(growth ~ bachelors, data = training), lty = "dashed")
+
+```
+
+We can see that the counties with high sales per capita are associated with higher growth. And the black dots which are the counties with the lowest sales per capita are associated with lower growth. The circle symbol represents the counties with a large number of families who have moved within one year. As you can see among the Blue (large sales per capita) plots and towards the right of the graph we can find numerous plots with highly mobile counties. Sales per capita can laso be an indicator of the number of houses and appartments being bought and sold. 
+
+
+2 Prediction with Linear Models
+
+I am going to use the variables that I have ideintifies as statistically significant from the previous ols
+
+```{r}
+ols_training <- lm(growth ~ no_move_in_one_plus_year + bachelors + mean_work_travel + 
+                     housing_units + households + sales_per_capita, data = training)
+summary(ols_training)
+
+yhat_popgrowth <- predict(ols_training, newdata = testing)
+"OLS model SSE"
+(SSE_popgrowth <- mean((testing$growth - yhat_popgrowth) ^ 2, na.rm = TRUE))
+
+```
+
+
+
+3 Prediction with Alternative Linear Models. When working the Lars model, lasso wouldn't compute so i deciede to test th RQ model instead.  
+```{r}
+PCR <- pcr(growth ~ no_move_in_one_plus_year + bachelors + mean_work_travel + 
+              housing_units + households + sales_per_capita, data = training, validation = "LOO")
+summary(PCR)
+
+yhat_pcr <- predict(PCR, newdata = testing)
+
+"PCR Model SSE:"
+(SSE_pcr <- mean((testing$growth - yhat_pcr) ^ 2, na.rm = TRUE))
+
+growth_rq <- rq(growth ~ no_move_in_one_plus_year + bachelors + mean_work_travel + 
+             housing_units + households + sales_per_capita, data = training)
+summary(growth_rq)
+
+yhat_rq <- predict(growth_rq, newdata = testing)
+"RQ Model SSE"
+(SSE_rq <- mean((testing$growth - yhat_rq) ^ 2, na.rm = TRUE))
+```
+
+In our case it looks like the mean squared of OLS model is the smallest

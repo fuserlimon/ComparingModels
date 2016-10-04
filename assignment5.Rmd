@@ -1,0 +1,89 @@
+---
+title: "Assignment 5"
+author: "Adnan Hajizada"
+date: "April 21, 2016"
+output: html_document
+---
+
+#Smooth Nonlinear Models for a Continuous Outcome
+
+```{r}
+stopifnot(require(ISLR))
+stopifnot(require(gam))
+stopifnot(require(tree))
+stopifnot(require(randomForest))
+str(College)
+
+include <- sample(nrow(College), size = 777/2, replace = FALSE)
+
+College$Grad.Rate.cut <- cut(College$Grad.Rate, breaks = 3)
+College$AppsXAccept <- College$Apps*College$Accept
+
+training <- College[include, ]
+testing <- College[-include, ]
+
+summary(lm(Outstate ~ Private + Apps + Accept + AppsXAccept+ Room.Board + 
+             perc.alumni + Expend + Grad.Rate.cut, data = training))
+
+gam_m3 <- gam(Outstate ~ Room.Board + Apps + Accept + Expend + Grad.Rate.cut, data=training)
+yhat <- predict(gam_m3)
+plot(training$Grad.Rate.cut, yhat, type = "l")
+plot(training$Room.Board, yhat, type = "l")
+
+
+```
+
+Average error 
+
+```{r}
+mean(yhat == training$Outstate)
+gam_m4 <- gam(Outstate ~ Room.Board + Apps + Accept + Expend + Grad.Rate.cut, data=testing)
+yhat_testing <- predict(gam_m4)
+mean(yhat_testing == testing$Outstate)
+
+```
+
+#Tree-Based Models for a Binary Outcome
+
+```{r}
+setwd("C:/Users/FuserLimon/Documents/Semester 2/Data Mining/Assignment5")
+load("dataset-1.RData")
+str(dataset)
+
+include <- sample(nrow(dataset), size = 5000, replace = FALSE)
+training <- dataset[include, ]
+testing <- dataset[-include, ]
+
+logit <- glm(y ~ Debt.To.Income.Ratio + poly(Amount.Requested, degree = 2)  + 
+              Employment.Length, data = training, family = binomial(link = "logit"))
+summary(logit)
+y_hat_logit <- fitted(logit) # these are probabilitiesummary(y_hat_logit)
+summary(y_hat_logit)
+z_logit <- as.integer(y_hat_logit > 0.5) # these are classifications
+
+
+out <- tree(y ~ ., data = training)
+summary(out)
+plot(out)
+text(out, pretty = 0)
+
+#Prune the tree
+new_out <- prune.tree(out, best = 3)
+summary(new_out)
+plot(new_out)
+text(out, pretty = 0)
+
+
+yhat_y1 <- predict(logit, newdata = testing,  type = "response")
+z_logit <- as.integer(yhat_y1 > 0.5)
+table(testing$y, z_logit)
+mean(z_logit == testing$y)
+
+yhat_y1 <- predict(out, newdata = testing)
+z_logit <- as.integer(yhat_y1 > 0.5)
+table(testing$y, z_logit)
+mean(z_logit == testing$y)
+
+```
+
+As we can see the Logit methos seems to be better than the tree method in prediction
